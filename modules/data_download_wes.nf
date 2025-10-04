@@ -1,5 +1,5 @@
- process DATA_DOWNLOAD_WES {
-    container 'python:3.9-slim'
+process DATA_DOWNLOAD_WES {
+    container 'community.wave.seqera.io/library/python:3.13.7--b46958bde3c7e023'
     publishDir "${params.outdir_base}/vcfs", mode: 'copy'
 
     input:
@@ -10,7 +10,8 @@
 
     script:
     """
-    # Install required Python packages
+    # Install required system tools and Python packages
+    apt-get update && apt-get install -y procps && apt-get clean
     pip install pandas requests
 
     # Python script to process the samplesheet and download VCF files
@@ -31,10 +32,13 @@ originator_patients = samplesheet[samplesheet['Sample ID'] == 'ORIGINATOR']['Pat
 print("Originator Patient IDs:")
 print(originator_patients)
 
-# Filter rows where Patient ID is in the list and PDM Type is PDX
+# Filter rows where Patient ID is in the list and PDM Type is either PDX or Patient/Originator Specimen
 filtered_rows = samplesheet[
     (samplesheet['Patient ID'].isin(originator_patients)) &
-    (samplesheet['PDM Type'].str.strip().str.lower() == 'pdx')
+    (
+        (samplesheet['PDM Type'].str.strip().str.lower() == 'pdx') |
+        (samplesheet['PDM Type'].str.strip().str.lower() == 'patient/originator specimen')
+    )
 ]
 
 # Debug: Print rows matching both filters

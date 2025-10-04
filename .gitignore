@@ -2,3 +2,5 @@ work/
 work/**
 
 .nextflow*
+
+.nf-test**
