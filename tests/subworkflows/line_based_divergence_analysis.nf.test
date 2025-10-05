@@ -1,0 +1,268 @@
+nextflow_workflow {
+
+    name "Test Subworkflow LINE_BASED_DIVERGENCE_ANALYSIS"
+    script "subworkflows/line_based_divergence_analysis.nf"
+    workflow "LINE_BASED_DIVERGENCE_ANALYSIS"
+
+    test("Should process multiple patients with originator and passage samples") {
+
+        when {
+            workflow {
+                """
+                // Create test data for multiple patients
+                def patient1_orig_meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def patient1_pass_meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R',
+                    sample_id: 'XEY',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def patient2_orig_meta = [
+                    patient_id: '262622',
+                    specimen_id: '085-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def patient2_pass_meta = [
+                    patient_id: '262622',
+                    specimen_id: '085-R',
+                    sample_id: 'E3E',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                // Create mock VCF files
+                def vcf_content1 = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+chr1	300	.	T	A	60	PASS	.
+'''
+                
+                def vcf_content2 = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	400	.	C	G	60	PASS	.
+chr1	500	.	A	G	60	PASS	.
+'''
+                
+                def p1_orig_vcf = file("p1_orig.vcf")
+                p1_orig_vcf.text = vcf_content1
+                
+                def p1_pass_vcf = file("p1_pass.vcf")
+                p1_pass_vcf.text = vcf_content2
+                
+                def p2_orig_vcf = file("p2_orig.vcf")
+                p2_orig_vcf.text = vcf_content1
+                
+                def p2_pass_vcf = file("p2_pass.vcf")
+                p2_pass_vcf.text = vcf_content2
+                
+                // Create input channel
+                input[0] = Channel.of(
+                    [patient1_orig_meta, p1_orig_vcf],
+                    [patient1_pass_meta, p1_pass_vcf],
+                    [patient2_orig_meta, p2_orig_vcf],
+                    [patient2_pass_meta, p2_pass_vcf]
+                )
+                """
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert workflow.out.divergence_metrics
+            
+            with(workflow.out.divergence_metrics) {
+                // Check that we have at least one result
+                assert size() >= 1
+                
+                // Check each result individually
+                for (int i = 0; i < size(); i++) {
+                    def result = get(i)
+                    
+                    // Each result should be a tuple [patient_id, file_path]
+                    assert result.size() == 2
+                    
+                    def patient_id = result[0]
+                    def metrics_file = result[1]
+                    
+                    assert patient_id instanceof String
+                    assert patient_id in ['184742', '262622']
+                    
+                    // Check file exists and has content
+                    def metrics_path = path(metrics_file)
+                    assert metrics_path.exists()
+                    assert metrics_path.size() > 0
+                    
+                    // Check file has proper CSV structure
+                    def lines = metrics_path.readLines()
+                    assert lines.size() == 2  // Header + data
+                    assert lines[0].contains('patient_id')
+                    assert lines[0].contains('jaccard_distance')
+                    
+                    // Verify the patient ID in the file matches
+                    def data = lines[1].split(',')
+                    assert data[0] == patient_id
+                    
+                    println("Validated result for patient ${patient_id}")
+                }
+                
+                println("Successfully processed ${size()} patient comparison(s)")
+            }
+        }
+    }
+
+    test("Should skip patients without originator samples") {
+
+        when {
+            workflow {
+                """
+                // Create test data with only passage samples (no originator)
+                def p0_meta = [
+                    patient_id: '999999',
+                    specimen_id: '999-R',
+                    sample_id: 'XEY',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def p1_meta = [
+                    patient_id: '999999',
+                    specimen_id: '999-R',
+                    sample_id: 'ABC',
+                    passage: 'P1',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def vcf_content = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+'''
+                
+                def p0_vcf = file("p0.vcf")
+                p0_vcf.text = vcf_content
+                
+                def p1_vcf = file("p1.vcf")
+                p1_vcf.text = vcf_content
+                
+                input[0] = Channel.of(
+                    [p0_meta, p0_vcf],
+                    [p1_meta, p1_vcf]
+                )
+                """
+            }
+        }
+
+        then {
+            assert workflow.success
+            
+            with(workflow.out.divergence_metrics) {
+                // Should have no outputs since no originator sample
+                assert size() == 0
+            }
+        }
+    }
+
+    test("Should compute correct divergence metrics") {
+
+        when {
+            workflow {
+                """
+                // Create test with known divergence
+                def orig_meta = [
+                    patient_id: '123456',
+                    specimen_id: '123-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def pass_meta = [
+                    patient_id: '123456',
+                    specimen_id: '123-R',
+                    sample_id: 'TEST',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                // Originator: 4 variants
+                def orig_vcf_content = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+chr1	300	.	T	A	60	PASS	.
+chr1	400	.	C	G	60	PASS	.
+'''
+                
+                // Passage: 4 variants, 2 shared with originator
+                def pass_vcf_content = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+chr1	500	.	A	G	60	PASS	.
+chr1	600	.	G	T	60	PASS	.
+'''
+                
+                def orig_vcf = file("orig.vcf")
+                orig_vcf.text = orig_vcf_content
+                
+                def pass_vcf = file("pass.vcf")
+                pass_vcf.text = pass_vcf_content
+                
+                input[0] = Channel.of(
+                    [orig_meta, orig_vcf],
+                    [pass_meta, pass_vcf]
+                )
+                """
+            }
+        }
+
+        then {
+            assert workflow.success
+            
+            with(workflow.out.divergence_metrics) {
+                assert size() == 1
+                
+                def result = get(0)
+                def patient_id = result[0]
+                def metrics_file = result[1]
+                
+                assert patient_id == '123456'
+                
+                def metrics_path = path(metrics_file)
+                def lines = metrics_path.readLines()
+                def header = lines[0].split(',')
+                def data = lines[1].split(',')
+                
+                // Find column indices
+                def orig_count_idx = header.findIndexOf { it == 'total_originator_variants' }
+                def pass_count_idx = header.findIndexOf { it == 'total_passage_variants' }
+                def shared_idx = header.findIndexOf { it == 'shared_variants' }
+                def jaccard_idx = header.findIndexOf { it == 'jaccard_distance' }
+                
+                // Verify counts
+                assert data[orig_count_idx] == '4'  // 4 originator variants
+                assert data[pass_count_idx] == '4'  // 4 passage variants  
+                assert data[shared_idx] == '2'     // 2 shared variants
+                
+                // Verify Jaccard distance: (4-2 + 4-2) / (4+4-2) = 4/6 = 0.666667
+                def jaccard_distance = Double.parseDouble(data[jaccard_idx])
+                assert Math.abs(jaccard_distance - (4.0/6.0)) < 0.001
+                
+                println("Jaccard distance: ${jaccard_distance} (expected ~0.667)")
+            }
+        }
+    }
+}

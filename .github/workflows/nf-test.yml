@@ -17,6 +17,8 @@ jobs:
           - "25.04.6"
         TEST_FILE:
           - tests/modules/data_download_wes.nf.test
+          - tests/modules/line_based_divergence.nf.test
+          - tests/subworkflows/line_based_divergence_analysis.nf.test
     steps:
       - name: Check out pipeline code
         uses: actions/checkout@v4

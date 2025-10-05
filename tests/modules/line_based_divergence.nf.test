@@ -1,0 +1,231 @@
+nextflow_process {
+
+    name "Test Process LINE_BASED_DIVERGENCE"
+    script "modules/line_based_divergence.nf"
+    process "LINE_BASED_DIVERGENCE"
+
+    test("Should compute divergence metrics for P0 passage") {
+
+        when {
+            process {
+                """
+                // Create test meta maps
+                def originator_meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def passage_meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R',
+                    sample_id: 'XEY',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                // Create mock VCF files
+                def originator_vcf = file("originator.vcf")
+                originator_vcf.text = '''##fileformat=VCFv4.2
+##contig=<ID=chr1,length=249250621>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+chr1	300	.	T	A	60	PASS	.
+chr1	400	.	C	G	60	PASS	.
+chr1	500	.	A	G	60	PASS	.
+'''
+                
+                def passage_vcf = file("passage.vcf")
+                passage_vcf.text = '''##fileformat=VCFv4.2
+##contig=<ID=chr1,length=249250621>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+chr1	300	.	T	A	60	PASS	.
+chr1	600	.	A	C	60	PASS	.
+chr1	700	.	G	T	60	PASS	.
+'''
+                
+                input[0] = ['184742', originator_meta, originator_vcf, passage_meta, passage_vcf]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert process.out.divergence_metrics
+            
+            with(process.out.divergence_metrics) {
+                assert size() == 1
+                def result = get(0)
+                def patient_id = result[0]
+                def metrics_file = result[1]
+                
+                // Check patient ID
+                assert patient_id == '184742'
+                
+                // Check file exists and has content
+                def metrics_path = path(metrics_file)
+                assert metrics_path.exists()
+                assert metrics_path.size() > 0
+                
+                // Parse CSV and check metrics
+                def lines = metrics_path.readLines()
+                assert lines.size() == 2  // Header + data row
+                
+                def header = lines[0].split(',')
+                def data = lines[1].split(',')
+                
+                // Check header columns
+                assert header.contains('patient_id')
+                assert header.contains('jaccard_distance')
+                assert header.contains('variant_gain_rate')
+                assert header.contains('variant_loss_rate')
+                
+                // Check data values
+                def patient_idx = header.findIndexOf { it == 'patient_id' }
+                def orig_sample_idx = header.findIndexOf { it == 'originator_sample' }
+                def pass_sample_idx = header.findIndexOf { it == 'passage_sample' }
+                def passage_idx = header.findIndexOf { it == 'passage_number' }
+                def orig_count_idx = header.findIndexOf { it == 'total_originator_variants' }
+                def pass_count_idx = header.findIndexOf { it == 'total_passage_variants' }
+                def shared_idx = header.findIndexOf { it == 'shared_variants' }
+                def jaccard_idx = header.findIndexOf { it == 'jaccard_distance' }
+                
+                assert data[patient_idx] == '184742'
+                assert data[orig_sample_idx] == 'ORIGINATOR'
+                assert data[pass_sample_idx] == 'XEY'
+                assert data[passage_idx] == 'P0'
+                assert data[orig_count_idx] == '5'  // 5 variants in originator
+                assert data[pass_count_idx] == '5'  // 5 variants in passage
+                assert data[shared_idx] == '3'     // 3 shared variants
+                
+                // Check Jaccard distance calculation (2 unique variants out of 7 total)
+                def jaccard_distance = Double.parseDouble(data[jaccard_idx])
+                assert Math.abs(jaccard_distance - (4.0/7.0)) < 0.001  // ~0.571
+            }
+        }
+    }
+
+    test("Should handle ORIGINATOR passage correctly") {
+
+        when {
+            process {
+                """
+                def originator_meta = [
+                    patient_id: '262622',
+                    specimen_id: '085-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def passage_meta = [
+                    patient_id: '262622',
+                    specimen_id: '085-R',
+                    sample_id: 'E3E',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                // Create identical VCF files (no divergence)
+                def vcf_content = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	T	60	PASS	.
+chr1	200	.	G	C	60	PASS	.
+'''
+                
+                def originator_vcf = file("originator.vcf")
+                originator_vcf.text = vcf_content
+                
+                def passage_vcf = file("passage.vcf")
+                passage_vcf.text = vcf_content
+                
+                input[0] = ['262622', originator_meta, originator_vcf, passage_meta, passage_vcf]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            with(process.out.divergence_metrics) {
+                def result = get(0)
+                def metrics_file = result[1]
+                def lines = path(metrics_file).readLines()
+                def data = lines[1].split(',')
+                def header = lines[0].split(',')
+                
+                // Should have zero divergence for identical files
+                def jaccard_idx = header.findIndexOf { it == 'jaccard_distance' }
+                def jaccard_distance = Double.parseDouble(data[jaccard_idx])
+                assert jaccard_distance == 0.0
+                
+                // Check gain and loss rates are zero
+                def gain_idx = header.findIndexOf { it == 'variant_gain_rate' }
+                def loss_idx = header.findIndexOf { it == 'variant_loss_rate' }
+                assert Double.parseDouble(data[gain_idx]) == 0.0
+                assert Double.parseDouble(data[loss_idx]) == 0.0
+            }
+        }
+    }
+
+    test("Should handle empty VCF files") {
+
+        when {
+            process {
+                """
+                def originator_meta = [
+                    patient_id: '999999',
+                    specimen_id: '999-R',
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def passage_meta = [
+                    patient_id: '999999',
+                    specimen_id: '999-R',
+                    sample_id: 'TEST',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                // Create empty VCF files (headers only)
+                def empty_vcf_content = '''##fileformat=VCFv4.2
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+'''
+                
+                def originator_vcf = file("empty_originator.vcf")
+                originator_vcf.text = empty_vcf_content
+                
+                def passage_vcf = file("empty_passage.vcf")
+                passage_vcf.text = empty_vcf_content
+                
+                input[0] = ['999999', originator_meta, originator_vcf, passage_meta, passage_vcf]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            with(process.out.divergence_metrics) {
+                def result = get(0)
+                def metrics_file = result[1]
+                def lines = path(metrics_file).readLines()
+                def data = lines[1].split(',')
+                def header = lines[0].split(',')
+                
+                // Should handle empty files gracefully
+                def orig_count_idx = header.findIndexOf { it == 'total_originator_variants' }
+                def pass_count_idx = header.findIndexOf { it == 'total_passage_variants' }
+                assert data[orig_count_idx] == '0'
+                assert data[pass_count_idx] == '0'
+            }
+        }
+    }
+}

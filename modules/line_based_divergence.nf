@@ -1,5 +1,5 @@
 process LINE_BASED_DIVERGENCE {
-    container 'debian:bookworm-slim'
+    container 'community.wave.seqera.io/library/python:3.13.7--b46958bde3c7e023'
     publishDir "${params.outdir_base}/genomic_divergence", mode: 'copy'
 
     input:
