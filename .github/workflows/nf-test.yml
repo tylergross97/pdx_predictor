@@ -16,7 +16,7 @@ jobs:
         NXF_VER:
           - "25.04.6"
         TEST_FILE:
-          - tests/modules/data_download_wes.test
+          - tests/modules/data_download_wes.nf.test
     steps:
       - name: Check out pipeline code
         uses: actions/checkout@v4
