@@ -9,22 +9,182 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("${projectDir}/test/data/ccrcc_wes_samplesheet.csv")
+                // Create a test meta map and row data
+                def meta = [
+                    patient_id: '161973',
+                    specimen_id: '066-R', 
+                    sample_id: 'UFY',
+                    passage: 'P0',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def row = [
+                    'Patient ID': '161973',
+                    'Specimen ID': '066-R',
+                    'Sample ID': 'UFY',
+                    'CTEP SDCDescription': 'RCC, clear cell adenocarcinoma',
+                    'DiagnosisSubtype': '',
+                    'OncoTreeCode': 'CCRCC',
+                    'Disease BodyLocation': 'Genitourinary',
+                    'PDM Type': 'PDX',
+                    'VCF': '/pdm/161973~066-R~UFY~v2.0.2.51.0~WES.vcf',
+                    'VCFVersion': '2.0.2.51.0',
+                    'Read1 FASTQ': '/pdm/161973~066-R~UFY~v2.0.2.51.0~WES.R1.FASTQ.gz',
+                    'Read2 FASTQ': '/pdm/161973~066-R~UFY~v2.0.2.51.0~WES.R2.FASTQ.gz',
+                    'FASTQVersion': '2.0.2.51.0'
+                ]
+                
+                input[0] = [meta, row]
                 """
             }
         }
 
         then {
-            def output = process.out.vcf_files[0]
-            assert output.size() == 4, "Expected 4 VCF files to be downloaded, but got ${output.size()}"
-            output.each { vcf_path ->
-                def vcf_file = path(vcf_path)
-                // println("Checking file: ${vcf_file}")
-                def vcf = vcf_file.vcf
-                println("VCF file summary for ${vcf_file}: ${vcf.summary}")
+            assert process.success
+            assert process.out.vcf_files
+            
+            with(process.out.vcf_files) {
+                assert size() == 1
+                def meta_and_vcf = get(0)
+                def meta = meta_and_vcf[0]
+                def vcf_files = meta_and_vcf[1]
+                
+                // Check meta map
+                assert meta.patient_id == '161973'
+                assert meta.specimen_id == '066-R'
+                assert meta.sample_id == 'UFY'
+                assert meta.passage == 'P0'
+                assert meta.onco_tree_code == 'CCRCC'
+                
+                // Check VCF file exists and has correct name
+                def vcf_path = path(vcf_files)
+                assert vcf_path.exists()
+                assert vcf_path.toString().endsWith('.vcf')
+                assert vcf_path.toString().contains('161973~066-R~UFY')
+                println("VCF files output: ${vcf_files}")
+            }
+        }
+    }
+
+    test("Should handle ORIGINATOR sample") {
+
+        when {
+            process {
+                """
+                // Create a test meta map and row data for ORIGINATOR
+                def meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R', 
+                    sample_id: 'ORIGINATOR',
+                    passage: 'o',
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def row = [
+                    'Patient ID': '184742',
+                    'Specimen ID': '138-R',
+                    'Sample ID': 'ORIGINATOR',
+                    'CTEP SDCDescription': 'RCC, clear cell adenocarcinoma',
+                    'DiagnosisSubtype': '',
+                    'OncoTreeCode': 'CCRCC',
+                    'Disease BodyLocation': 'Genitourinary',
+                    'PDM Type': 'Patient/Originator Specimen',
+                    'VCF': '/pdm/184742~138-R~ORIGINATOR~v2.0.4.51.0~WES.vcf',
+                    'VCFVersion': '2.0.4.51.0',
+                    'Read1 FASTQ': '/pdm/184742~138-R~ORIGINATOR~v2.0.4.51.0~WES.R1.FASTQ.gz',
+                    'Read2 FASTQ': '/pdm/184742~138-R~ORIGINATOR~v2.0.4.51.0~WES.R2.FASTQ.gz',
+                    'FASTQVersion': '2.0.4.51.0'
+                ]
+                
+                input[0] = [meta, row]
+                """
             }
         }
 
+        then {
+            assert process.success
+            assert process.out.vcf_files
+            
+            with(process.out.vcf_files) {
+                assert size() == 1
+                def meta_and_vcf = get(0)
+                def meta = meta_and_vcf[0]
+                def vcf_files = meta_and_vcf[1]
+                
+                // Check meta map for ORIGINATOR
+                assert meta.patient_id == '184742'
+                assert meta.specimen_id == '138-R'
+                assert meta.sample_id == 'ORIGINATOR'
+                assert meta.passage == 'o'  // Should be 'o' for ORIGINATOR
+                assert meta.onco_tree_code == 'CCRCC'
+                
+                // Check VCF file exists
+                def vcf_path = path(vcf_files)
+                assert vcf_path.exists()
+                assert vcf_path.toString().endsWith('.vcf')
+                assert vcf_path.toString().contains('ORIGINATOR')
+            }
+        }
     }
 
+    test("Should handle sample with RG suffix") {
+
+        when {
+            process {
+                """
+                // Create a test meta map and row data for sample with RG suffix
+                def meta = [
+                    patient_id: '184742',
+                    specimen_id: '138-R', 
+                    sample_id: 'XEY_RG-E19JK0',
+                    passage: 'P2',  // XEY_RG-E19JK0 -> remove _RG- -> XEYE19JK0 = 9 chars -> P2
+                    onco_tree_code: 'CCRCC'
+                ]
+                
+                def row = [
+                    'Patient ID': '184742',
+                    'Specimen ID': '138-R',
+                    'Sample ID': 'XEY_RG-E19JK0',
+                    'CTEP SDCDescription': 'RCC, clear cell adenocarcinoma',
+                    'DiagnosisSubtype': '',
+                    'OncoTreeCode': 'CCRCC',
+                    'Disease BodyLocation': 'Genitourinary',
+                    'PDM Type': 'PDX',
+                    'VCF': '/pdm/184742~138-R~XEY_RG-E19JK0~v2.0.4.51.0~WES.vcf',
+                    'VCFVersion': '2.0.4.51.0',
+                    'Read1 FASTQ': '/pdm/184742~138-R~XEY_RG-E19JK0~v2.0.4.51.0~WES.R1.FASTQ.gz',
+                    'Read2 FASTQ': '/pdm/184742~138-R~XEY_RG-E19JK0~v2.0.4.51.0~WES.R2.FASTQ.gz',
+                    'FASTQVersion': '2.0.4.51.0'
+                ]
+                
+                input[0] = [meta, row]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert process.out.vcf_files
+            
+            with(process.out.vcf_files) {
+                assert size() == 1
+                def meta_and_vcf = get(0)
+                def meta = meta_and_vcf[0]
+                def vcf_files = meta_and_vcf[1]
+                
+                // Check meta map for RG sample
+                assert meta.patient_id == '184742'
+                assert meta.specimen_id == '138-R'
+                assert meta.sample_id == 'XEY_RG-E19JK0'
+                assert meta.passage == 'P2'  // XEYE19JK0 after removing _RG- = 9 chars -> P2
+                assert meta.onco_tree_code == 'CCRCC'
+                
+                // Check VCF file exists
+                def vcf_path = path(vcf_files)
+                assert vcf_path.exists()
+                assert vcf_path.toString().endsWith('.vcf')
+                assert vcf_path.toString().contains('XEY_RG-E19JK0')
+            }
+        }
+    }
 }
