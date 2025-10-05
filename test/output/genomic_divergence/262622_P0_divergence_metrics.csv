@@ -1,0 +1,2 @@
+patient_id,originator_sample,passage_sample,passage_number,originator_specimen,passage_specimen,onco_tree_code,total_originator_variants,total_passage_variants,shared_variants,originator_only_variants,passage_only_variants,total_union_variants,jaccard_similarity,jaccard_distance,variant_gain_rate,variant_loss_rate,relative_divergence,mutation_burden_change
+262622,ORIGINATOR,E3E,P0,085-R,085-R,CCRCC,99516,94135,90030,9486,4105,103621,0.868839,0.131161,0.041250,0.095321,0.131161,-0.054072

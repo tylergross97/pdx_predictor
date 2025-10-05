@@ -2,29 +2,23 @@
 nextflow.enable.dsl = 2
 
 include { DATA_DOWNLOAD_WES } from './modules/data_download_wes.nf'
+include { LINE_BASED_DIVERGENCE_ANALYSIS } from './subworkflows/line_based_divergence_analysis.nf'
 
 workflow {
     ch_wes_samplesheet = Channel.fromPath(params.wes_samplesheet)
-        .splitCsv(header: true, quote: '"')  // Handle quoted fields properly
+        .splitCsv(header: true, quote: '"')
         .filter { row ->
-            // Only process PDX samples or Patient/Originator Specimen samples
             def pdmType = row['PDM Type']?.toString()?.strip()?.toLowerCase() ?: ''
             return pdmType == 'pdx' || pdmType == 'patient/originator specimen'
         }
         .map { row ->
-            // Function to determine passage based on Sample ID
             def determinePassage = { sampleId ->
                 if (sampleId == 'ORIGINATOR') {
-                    return 'o'  // ORIGINATOR gets 'o'
+                    return 'o'
                 }
-                
-                // Remove '_RG-' or 'RG-' prefixes/suffixes for character counting
                 def cleanSampleId = sampleId.replaceAll(/(_RG-|RG-)/, '')
-                
-                // Count all characters in the cleaned sample ID
                 def charCount = cleanSampleId.length()
                 
-                // Map character count to passage (multiples of 3)
                 switch (charCount) {
                     case 3: return 'P0'
                     case 6: return 'P1'
@@ -40,7 +34,6 @@ workflow {
                 }
             }
             
-            // Create meta map with the requested fields
             def meta = [
                 patient_id: row['Patient ID'],
                 specimen_id: row['Specimen ID'], 
@@ -52,5 +45,21 @@ workflow {
             return [meta, row]
         }
     
+    // Download VCF files
     DATA_DOWNLOAD_WES(ch_wes_samplesheet)
+    
+    // Run line-based genomic divergence analysis
+    LINE_BASED_DIVERGENCE_ANALYSIS(DATA_DOWNLOAD_WES.out.vcf_files)
+    
+    // Display results
+    LINE_BASED_DIVERGENCE_ANALYSIS.out.divergence_metrics
+        .view { patient_id, metrics_file ->
+            "Genomic divergence metrics computed for patient ${patient_id}: ${metrics_file}"
+        }
+    
+    // Optional: Collect all metrics into a summary
+    LINE_BASED_DIVERGENCE_ANALYSIS.out.divergence_metrics
+        .map { patient_id, metrics_file -> metrics_file }
+        .collectFile(name: 'all_divergence_metrics.csv', keepHeader: true, storeDir: "${params.outdir_base}/summary")
+        .view { "Summary metrics file created: ${it}" }
 }
