@@ -1,5 +1,5 @@
 process LINE_BASED_DIVERGENCE {
-    container 'community.wave.seqera.io/library/python:3.13.7--b46958bde3c7e023'
+    container 'community.wave.seqera.io/library/pip_awscli:8f8767791189d33e'
     publishDir "${params.outdir_base}/genomic_divergence", mode: 'copy'
 
     input:
@@ -10,10 +10,6 @@ process LINE_BASED_DIVERGENCE {
 
     script:
     """
-    # Update package list and install required tools
-    apt-get update -qq
-    apt-get install -y -qq procps gawk coreutils grep
-
     echo "Processing divergence analysis for Patient ${patient_id}: ${originator_meta.sample_id} vs ${passage_meta.sample_id}"
     
     # Extract variant lines (skip headers) and sort for comparison
@@ -47,7 +43,7 @@ process LINE_BASED_DIVERGENCE {
     echo "Passage-only variants: \$PASS_ONLY"
     
     # Calculate metrics and create CSV using gawk
-    gawk -v orig=\$ORIG_COUNT -v pass=\$PASS_COUNT -v shared=\$SHARED_COUNT \\
+    awk -v orig=\$ORIG_COUNT -v pass=\$PASS_COUNT -v shared=\$SHARED_COUNT \\
         -v orig_only=\$ORIG_ONLY -v pass_only=\$PASS_ONLY \\
         -v patient_id="${patient_id}" \\
         -v orig_sample="${originator_meta.sample_id}" \\
@@ -76,7 +72,7 @@ process LINE_BASED_DIVERGENCE {
         }' > ${patient_id}_${passage_meta.passage}_divergence_metrics.csv
     
     echo "Divergence analysis complete!"
-    echo "Jaccard distance: \$(gawk 'NR==2 {print \$15}' FS=',' ${patient_id}_${passage_meta.passage}_divergence_metrics.csv)"
+    echo "Jaccard distance: \$(awk 'NR==2 {print \$15}' FS=',' ${patient_id}_${passage_meta.passage}_divergence_metrics.csv)"
     
     # Clean up intermediate files
     rm -f orig_variants.txt pass_variants.txt shared_variants.txt orig_only.txt pass_only.txt
