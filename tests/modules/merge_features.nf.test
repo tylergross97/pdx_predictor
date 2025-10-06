@@ -1,0 +1,205 @@
+nextflow_process {
+
+    name "Test Process MERGE_FEATURES"
+    script "modules/merge_features.nf"
+    process "MERGE_FEATURES"
+
+    test("Should merge multiple feature files successfully") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '12345', sample_id: 'ORIGINATOR', specimen_id: 'test-specimen-1', passage: 'o', onco_tree_code: 'BRCA'],
+                    [patient_id: '67890', sample_id: 'ORIGINATOR', specimen_id: 'test-specimen-2', passage: 'o', onco_tree_code: 'LUAD']
+                ]
+                input[1] = [
+                    file('${projectDir}/tests/data/features_12345_ORIGINATOR.csv'),
+                    file('${projectDir}/tests/data/features_67890_ORIGINATOR.csv')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert process.out.consolidated_features.size() == 1
+            
+            // Check that output file exists
+            def output_file = path(process.out.consolidated_features.get(0))
+            assert output_file.exists()
+            
+            // Check file content
+            def lines = output_file.readLines()
+            assert lines.size() > 1  // Header + data rows
+            
+            // Check header includes metadata columns
+            def header = lines[0]
+            assert header.contains('Patient_ID')
+            assert header.contains('Sample_ID')
+            
+            // Check that we have data from both patients
+            def content = output_file.text
+            assert content.contains('12345')
+            assert content.contains('67890')
+            assert content.contains('ORIGINATOR')
+        }
+    }
+
+    test("Should handle single feature file") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '11111', sample_id: 'ORIGINATOR', specimen_id: 'single-test', passage: 'o', onco_tree_code: 'COAD']
+                ]
+                input[1] = [
+                    file('${projectDir}/tests/data/features_11111_ORIGINATOR.csv')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.consolidated_features.get(0))
+            assert output_file.exists()
+            
+            def lines = output_file.readLines()
+            assert lines.size() > 1
+            
+            // Check that metadata was added correctly
+            def content = output_file.text
+            assert content.contains('11111')
+            assert content.contains('ORIGINATOR')
+        }
+    }
+
+    test("Should preserve original feature columns and add metadata") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '22222', sample_id: 'ORIGINATOR', specimen_id: 'column-test', passage: 'o', onco_tree_code: 'GBM']
+                ]
+                input[1] = [
+                    file('${projectDir}/tests/data/features_with_columns.csv')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.consolidated_features.get(0))
+            def lines = output_file.readLines()
+            
+            // Check header contains both original and new columns
+            def header = lines[0]
+            assert header.contains('CHROM')  // Original column
+            assert header.contains('POS')    // Original column
+            assert header.contains('Patient_ID')  // Added metadata
+            assert header.contains('Sample_ID')   // Added metadata
+            
+            // Check data integrity
+            assert lines.size() > 1
+            def data_line = lines[1]
+            def fields = data_line.split(',')
+            
+            // Should have original columns plus 2 metadata columns
+            assert fields.size() >= 8  // 6 original + 2 metadata
+        }
+    }
+
+    test("Should handle multiple patients with different numbers of variants") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '33333', sample_id: 'ORIGINATOR', specimen_id: 'multi-var-1', passage: 'o', onco_tree_code: 'BRCA'],
+                    [patient_id: '44444', sample_id: 'ORIGINATOR', specimen_id: 'multi-var-2', passage: 'o', onco_tree_code: 'LUAD']
+                ]
+                input[1] = [
+                    file('${projectDir}/tests/data/features_many_variants.csv'),
+                    file('${projectDir}/tests/data/features_few_variants.csv')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.consolidated_features.get(0))
+            def lines = output_file.readLines()
+            
+            // Should have header + variants from both files
+            assert lines.size() > 3  // Header + at least 2 variants
+            
+            // Check that both patients are represented
+            def content = output_file.text
+            assert content.contains('33333')
+            assert content.contains('44444')
+            
+            // Count occurrences of each patient
+            def patient1_count = content.split('33333').length - 1
+            def patient2_count = content.split('44444').length - 1
+            assert patient1_count > 0
+            assert patient2_count > 0
+        }
+    }
+
+    test("Should create valid CSV format") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '55555', sample_id: 'ORIGINATOR', specimen_id: 'csv-format', passage: 'o', onco_tree_code: 'CCRCC']
+                ]
+                input[1] = [
+                    file('${projectDir}/tests/data/features_12345_ORIGINATOR.csv')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.consolidated_features.get(0))
+            
+            // Test that pandas can read the output file (validates CSV format)
+            // This is implicit in the process working, but we can check structure
+            def lines = output_file.readLines()
+            
+            // All data lines should have same number of fields as header
+            def header_fields = lines[0].split(',').size()
+            lines[1..-1].each { line ->
+                if (line.trim()) {  // Skip empty lines
+                    assert line.split(',').size() == header_fields
+                }
+            }
+        }
+    }
+}

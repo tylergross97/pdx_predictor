@@ -4,3 +4,4 @@ work/**
 .nextflow*
 
 .nf-test**
+**.fa

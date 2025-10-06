@@ -3,6 +3,8 @@ nextflow.enable.dsl = 2
 
 include { DATA_DOWNLOAD_WES } from './modules/data_download_wes.nf'
 include { LINE_BASED_DIVERGENCE_ANALYSIS } from './subworkflows/line_based_divergence_analysis.nf'
+include { EXTRACT_FEATURES } from './modules/extract_features.nf'
+include { MERGE_FEATURES } from './modules/merge_features.nf'
 
 workflow {
     ch_wes_samplesheet = Channel.fromPath(params.wes_samplesheet)
@@ -62,4 +64,24 @@ workflow {
         .map { patient_id, metrics_file -> metrics_file }
         .collectFile(name: 'all_divergence_metrics.csv', keepHeader: true, storeDir: "${params.outdir_base}/summary")
         .view { "Summary metrics file created: ${it}" }
+
+    // Extract features from ORIGINATOR VCF files
+    EXTRACT_FEATURES(DATA_DOWNLOAD_WES.out.vcf_files.filter { meta, vcf_file -> meta.passage == 'o' })
+
+    // Use toList() to preserve tuple structure
+    collected_features = EXTRACT_FEATURES.out.toList()
+
+    // Debug: view what we're collecting
+    collected_features.view { "Collected features: $it" }
+
+    // Separate metadata and files for the process
+    metas = collected_features.map { tuples -> tuples.collect { tuple -> tuple[0] } }
+    files = collected_features.map { tuples -> tuples.collect { tuple -> tuple[1] } }
+
+    // Pass separated metadata and files to MERGE_FEATURES
+    MERGE_FEATURES(metas, files)
+
+    // Display the consolidated features file
+    MERGE_FEATURES.out.consolidated_features
+        .view { "Consolidated features file created: ${it}" }
 }

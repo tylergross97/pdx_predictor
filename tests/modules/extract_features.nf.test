@@ -1,0 +1,144 @@
+nextflow_process {
+
+    name "Test Process EXTRACT_FEATURES"
+    script "modules/extract_features.nf"
+    process "EXTRACT_FEATURES"
+
+    test("Should extract VCF features successfully with valid input") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '12345', sample_id: 'ORIGINATOR', specimen_id: 'test-specimen', passage: 'o', onco_tree_code: 'BRCA'],
+                    file('${projectDir}/tests/data/test_sample.vcf')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert process.out.vcf_features.size() == 1
+            
+            // Check that output file exists and has correct naming
+            with(process.out.vcf_features) {
+                assert get(0)[0].patient_id == '12345'
+                assert get(0)[0].sample_id == 'ORIGINATOR'
+            }
+            
+            // Check file content
+            def output_file = path(process.out.vcf_features.get(0)[1])
+            assert output_file.exists()
+            
+            def lines = output_file.readLines()
+            assert lines.size() > 1  // Header + at least one data row
+            assert lines[0] == 'CHROM,POS,REF,ALT,QUAL,FILTER'  // Check header
+            
+            // Verify CSV structure (should have 6 columns)
+            lines[1..-1].each { line ->
+                assert line.split(',').size() == 6
+            }
+        }
+    }
+
+    test("Should handle VCF with multiple variants") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '67890', sample_id: 'ORIGINATOR', specimen_id: 'multi-variant', passage: 'o', onco_tree_code: 'LUAD'],
+                    file('${projectDir}/tests/data/multi_variant.vcf')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.vcf_features.get(0)[1])
+            def lines = output_file.readLines()
+            
+            // Should have header plus multiple data rows
+            assert lines.size() > 2
+            
+            // Check that all lines have proper CSV format
+            lines[1..-1].each { line ->
+                def fields = line.split(',')
+                assert fields.size() == 6
+                // Basic validation that fields are not empty (except FILTER which can be)
+                assert fields[0] != ''  // CHROM
+                assert fields[1] != ''  // POS
+                assert fields[2] != ''  // REF
+                assert fields[3] != ''  // ALT
+                // QUAL and FILTER can be empty/missing
+            }
+        }
+    }
+
+    test("Should handle empty VCF (header only)") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '11111', sample_id: 'ORIGINATOR', specimen_id: 'empty-vcf', passage: 'o', onco_tree_code: 'COAD'],
+                    file('${projectDir}/tests/data/empty.vcf')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            def output_file = path(process.out.vcf_features.get(0)[1])
+            def lines = output_file.readLines()
+            
+            // Should have only header row
+            assert lines.size() == 1
+            assert lines[0] == 'CHROM,POS,REF,ALT,QUAL,FILTER'
+        }
+    }
+
+    test("Should preserve metadata in output") {
+
+        when {
+            params {
+                outdir_base = "test_results"
+            }
+            process {
+                """
+                input[0] = [
+                    [patient_id: '99999', sample_id: 'ORIGINATOR', specimen_id: 'meta-test', passage: 'o', onco_tree_code: 'GBM'],
+                    file('${projectDir}/tests/data/test_sample.vcf')
+                ]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            
+            // Verify metadata is preserved correctly
+            with(process.out.vcf_features.get(0)[0]) {
+                assert patient_id == '99999'
+                assert sample_id == 'ORIGINATOR'
+                assert specimen_id == 'meta-test'
+                assert passage == 'o'
+                assert onco_tree_code == 'GBM'
+            }
+        }
+    }
+}
