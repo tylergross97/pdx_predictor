@@ -1,5 +1,5 @@
 process DATA_DOWNLOAD_WES {
-    container 'community.wave.seqera.io/library/python:3.13.7--b46958bde3c7e023'
+    container 'community.wave.seqera.io/library/python_pip_awscli:6f831292c5c3d42a'
     publishDir "${params.outdir_base}/vcfs", mode: 'copy'
 
     input:
