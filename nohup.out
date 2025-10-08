@@ -1,0 +1,50 @@
+
+ N E X T F L O W   ~  version 25.04.7
+
+Launching `main.nf` [festering_ramanujan] DSL2 - revision: 716fe0176b
+
+[-        ] STAGE_REFERENCE -
+
+[-        ] STAGE_REFERENCE                                      -
+[-        ] DATA_DOWNLOAD_WES                                    -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:NORMALIZE_VCF         -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:LINE_BASED_DIVERGENCE -
+
+[-        ] STAGE_REFERENCE                                      -
+[-        ] DATA_DOWNLOAD_WES                                    -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:NORMALIZE_VCF         -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:LINE_BASED_DIVERGENCE -
+[-        ] EXTRACT_FEATURES                                     -
+[-        ] MERGE_FEATURES                                       -
+
+[-        ] STAGE_REFERENCE                                      -
+[-        ] DATA_DOWNLOAD_WES                                    [  0%] 0 of 7
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:NORMALIZE_VCF         -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:LINE_BASED_DIVERGENCE -
+[-        ] EXTRACT_FEATURES                                     -
+[-        ] MERGE_FEATURES                                       -
+
+[-        ] STAGE_REFERENCE                                      [  0%] 0 of 1
+[-        ] DATA_DOWNLOAD_WES                                    [  0%] 0 of 11
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:NORMALIZE_VCF         -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:LINE_BASED_DIVERGENCE -
+[-        ] EXTRACT_FEATURES                                     -
+[-        ] MERGE_FEATURES                                       -
+ERROR ~ Missing double-quote termination in CSV value -- offending line: "ductal
+
+ -- Check '.nextflow.log' file for details
+
+[-        ] STAGE_REFERENCE                                      [  0%] 0 of 1
+[-        ] DATA_DOWNLOAD_WES                                    [  0%] 0 of 14
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:NORMALIZE_VCF         -
+[-        ] LINE_BASED_DIVERGENCE_ANALYSIS:LINE_BASED_DIVERGENCE -
+[-        ] EXTRACT_FEATURES                                     -
+[-        ] MERGE_FEATURES                                       -
+ERROR ~ Missing double-quote termination in CSV value -- offending line: "ductal
+
+ -- Check '.nextflow.log' file for details
+[67/46acd4] Submitted process > DATA_DOWNLOAD_WES (3)
+[17/0ec89c] Submitted process > DATA_DOWNLOAD_WES (6)
+[aa/54d6ae] Submitted process > DATA_DOWNLOAD_WES (7)
+[ce/7034c9] Submitted process > DATA_DOWNLOAD_WES (1)
+

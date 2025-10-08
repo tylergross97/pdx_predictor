@@ -2,6 +2,7 @@
 nextflow.enable.dsl = 2
 
 include { DATA_DOWNLOAD_WES } from './modules/data_download_wes.nf'
+include { STAGE_REFERENCE } from './modules/stage_reference.nf'
 include { LINE_BASED_DIVERGENCE_ANALYSIS } from './subworkflows/line_based_divergence_analysis.nf'
 include { EXTRACT_FEATURES } from './modules/extract_features.nf'
 include { MERGE_FEATURES } from './modules/merge_features.nf'
@@ -47,11 +48,25 @@ workflow {
             return [meta, row]
         }
     
+    // Start reference download immediately (in parallel with VCF downloads)
+    STAGE_REFERENCE()
+    
     // Download VCF files
     DATA_DOWNLOAD_WES(ch_wes_samplesheet)
     
+    // Wait for both reference and VCF files to be ready
+    // This creates a channel where each VCF gets paired with the same reference
+    vcf_with_reference = DATA_DOWNLOAD_WES.out.vcf_files
+        .combine(STAGE_REFERENCE.out.reference)
+        .map { meta, vcf_file, reference ->
+            [meta, vcf_file, reference]
+        }
+    
+    // Debug: Show when reference is ready
+    STAGE_REFERENCE.out.reference.view { "Reference genome ready: ${it}" }
+    
     // Run line-based genomic divergence analysis
-    LINE_BASED_DIVERGENCE_ANALYSIS(DATA_DOWNLOAD_WES.out.vcf_files)
+    LINE_BASED_DIVERGENCE_ANALYSIS(vcf_with_reference)
     
     // Display results
     LINE_BASED_DIVERGENCE_ANALYSIS.out.divergence_metrics

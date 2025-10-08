@@ -1,12 +1,28 @@
 include { LINE_BASED_DIVERGENCE } from '../modules/line_based_divergence'
+include { NORMALIZE_VCF } from '../modules/normalize_vcf'
 
 workflow LINE_BASED_DIVERGENCE_ANALYSIS {
     take:
-    vcf_files_ch  // Channel: [meta, vcf_file]
+    vcf_with_reference_ch  // Channel: [meta, vcf_file, reference_fasta]
 
     main:
+    // Prepare input for VCF normalization
+    normalize_input = vcf_with_reference_ch
+        .map { meta, vcf, reference ->
+            [meta.patient_id, meta, vcf, reference]
+        }
+
+    // Run VCF normalization - now each process gets the same cached reference
+    NORMALIZE_VCF(normalize_input)
+
+    // Transform normalized output back to the expected format for divergence analysis
+    normalized_vcfs = NORMALIZE_VCF.out.normalized_vcfs
+        .map { patient_id, sample_meta, normalized_vcf ->
+            [sample_meta, normalized_vcf]
+        }
+
     // Group samples by patient_id and create originator-passage pairs
-    grouped_samples = vcf_files_ch
+    grouped_samples = normalized_vcfs
         .map { meta, vcf ->
             [meta.patient_id, meta, vcf]
         }
@@ -46,9 +62,10 @@ workflow LINE_BASED_DIVERGENCE_ANALYSIS {
         "Creating comparison: Patient ${patient_id} - ${orig_meta.sample_id} (${orig_meta.passage}) vs ${pass_meta.sample_id} (${pass_meta.passage})"
     }
 
-    // Run line-based divergence analysis
+    // Run line-based divergence analysis on normalized VCFs
     LINE_BASED_DIVERGENCE(grouped_samples)
 
     emit:
     divergence_metrics = LINE_BASED_DIVERGENCE.out.divergence_metrics
+    normalized_vcfs = NORMALIZE_VCF.out.normalized_vcfs
 }
